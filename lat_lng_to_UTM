@@ -1,0 +1,144 @@
+/*
+  Reading and converting Lat/Long to UTM coordinates from the Qwiic GPS module over I2C
+  By: Nathan Seidle
+  Modifications: David Ceniceros
+  SparkFun Electronics
+  Date: April 12th, 2017
+  Modifications: June 29, 2020
+  
+  This example converts GPD coordinates to UTM coordinates.
+
+  You will need two libraries:
+  1) Use library manager to search for and install: 'SparkFun I2C GPS Arduino Library'
+  2) Download and install the zip library from https://github.com/mikalhart/TinyGPSPlus
+
+  Hardware Connections:
+  Attach a Qwiic shield to your RedBoard or Uno.
+  Plug the Qwiic sensor into any port.
+  Serial.print it out at 115200 baud to serial monitor.
+*/
+
+#include <SparkFun_I2C_GPS_Arduino_Library.h> //Use Library Manager or download here: https://github.com/sparkfun/SparkFun_I2C_GPS_Arduino_Library
+I2CGPS myI2CGPS; //Hook object to the library
+
+#include <TinyGPS++.h> //From: https://github.com/mikalhart/TinyGPSPlus
+TinyGPSPlus gps; //Declare gps object
+
+#define sm_a 6378137.0
+#define sm_b 6356752.314
+#define pi 3.14159265358979
+#define UTMScaleFactor 0.9996
+
+float easting, northing;
+
+void setup()
+{
+  Serial.begin(115200);
+  Serial.println("GTOP Read Example");
+
+  if (myI2CGPS.begin() == false)
+  {
+    Serial.println("Module failed to respond. Please check wiring.");
+    while (1); //Freeze!
+  }
+  Serial.println("GPS module found!");
+}
+
+void loop()
+{ 
+  while (myI2CGPS.available()) //available() returns the number of new bytes available from the GPS module
+  {
+    gps.encode(myI2CGPS.read()); //Feed the GPS parser
+  }
+
+  if (gps.time.isUpdated()) //Check to see if new GPS info is available
+  {
+    displayInfo();
+  }
+}
+
+//calculations, convertion and display of GPS info
+void displayInfo()
+{
+  double ep2 = (pow(sm_a, 2.0) - pow(sm_b, 2.0)) / pow(sm_b, 2.0), 
+  phi = (gps.location.lat() * pi/180),
+  l = (gps.location.lng() * pi/180),
+  nu2 = ep2 * pow(cos(phi), 2.0), 
+  N = pow(sm_a, 2.0) / (sm_b * sqrt(1 + nu2)), 
+  t = tan(phi), 
+  t2 = t * t, 
+  coef13  = 1.0 - t2 + nu2, 
+  coef14 = 5.0 - t2 + 9 * nu2 + 4.0 * (nu2 * nu2), 
+  coef15 = 5.0 - 18.0 * t2 + (t2 * t2) + 14.0 * nu2 - 58.0 * t2 * nu2, 
+  coef16 = 61.0 - 58.0 * t2 + (t2 * t2) + 270.0 * nu2 - 330.0 * t2 * nu2, 
+  coef17 = 61.0 - 479.0 * t2 + 179.0 * (t2 * t2) - (t2 * t2 * t2), 
+  coef18 = 1385.0 - 3111.0 * t2 + 543.0 * (t2 * t2) - (t2 * t2 * t2),
+  x = N * cos(phi) * l + (N / 6.0 * pow(cos(phi), 3.0) * coef13 * pow(l, 3.0))
+  + (N / 120.0 * pow(cos(phi), 5.0) * coef15 * pow(l, 5.0)) + (N / 5040.0 * pow(cos(phi), 7.0) * coef17 * pow(l, 7.0)),
+  y = ArcLengthOfMeridian (phi)+ (t / 2.0 * N * pow(cos(phi), 2.0) * pow(l, 2.0))
+  + (t / 24.0 * N * pow(cos(phi), 4.0) * coef14 * pow(l, 4.0)) + (t / 720.0 * N * pow(cos(phi), 6.0) * coef16 * pow(l, 6.0))
+  + (t / 40320.0 * N * pow(cos(phi), 8.0) * coef18 * pow(l, 8.0)),
+  easting = (x * UTMScaleFactor + 500000.0) / -9349.3157,
+  northing = (y * UTMScaleFactor) / 3086.9149;
+  
+  if (gps.time.isValid())
+  {
+    Serial.println(); //Done printing time
+  }
+  else
+  {
+  }
+
+  if (gps.location.isValid())
+  {
+    Serial.println("Location: ");
+    Serial.print("GPS Latitude: ");
+    Serial.print(gps.location.lat(), 6);
+    Serial.print(F(", "));
+    Serial.print("UTM Northing: ");
+    Serial.print(northing, 4);
+    Serial.println(" Km");
+    Serial.print("GPS Longitude: ");
+    Serial.print(gps.location.lng(), 6);
+    Serial.print(F(", "));
+    Serial.print("UTM Easting: ");
+    Serial.print(easting, 4);
+    Serial.println(" Km");
+    Serial.println();
+    delay(1000);
+  }
+  else
+  {
+    Serial.println(F("Location not yet valid"));
+    delay(1000);
+  }
+}
+
+float ArcLengthOfMeridian (float phi) {
+  float alpha, beta, gamma, delta, epsilon, n;
+  float result;
+
+  n = (sm_a - sm_b) / (sm_a + sm_b);
+
+  alpha = ((sm_a + sm_b) / 2.0)
+        * (1.0 + (pow(n, 2.0) / 4.0) + (pow(n, 4.0) / 64.0));
+
+  beta = (-3.0 * n / 2.0) + (9.0 * pow(n, 3.0) / 16.0)
+       + (-3.0 * pow(n, 5.0) / 32.0);
+
+  gamma = (15.0 * pow(n, 2.0) / 16.0)
+        + (-15.0 * pow(n, 4.0) / 32.0);
+
+  delta = (-35.0 * pow(n, 3.0) / 48.0)
+      + (105.0 * pow(n, 5.0) / 256.0);
+  
+  epsilon = (315.0 * pow(n, 4.0) / 512.0);
+
+  result = alpha
+         * (phi + (beta * sin(2.0 * phi))
+         + (gamma * sin(4.0 * phi))
+         + (delta * sin(6.0 * phi))
+         + (epsilon * sin(8.0 * phi)));
+  
+  return result;
+}
