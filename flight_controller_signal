@@ -1,0 +1,35 @@
+// Do not remove the include below
+#include "PlutoPilot.h"
+#include "Peripheral.h"
+#include "User.h"
+#include "Utils.h"
+
+int val = 0;
+
+void plutoInit()
+{
+	GPIO.init(Pin19, INPUT);
+	GPIO.init(Pin18, OUTPUT);
+}
+
+void onLoopStart()
+{
+}
+
+void plutoLoop()
+{
+	val = GPIO.read(Pin19);
+	if (val == 1)
+	{
+		GPIO.write(Pin18, STATE_HIGH);
+	}
+	else
+	{
+		GPIO.write(Pin18, STATE_LOW);
+	}
+}
+
+void onLoopFinish()
+{
+}
+
